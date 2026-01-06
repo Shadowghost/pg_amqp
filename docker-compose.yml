@@ -1,0 +1,81 @@
+# Docker Compose configuration for pg_amqp development and testing
+#
+# Usage:
+#   Development (RabbitMQ only):
+#     docker compose up -d rabbitmq
+#
+#   Development (RabbitMQ + PostgreSQL):
+#     docker compose up -d rabbitmq postgres
+#
+#   Run integration tests:
+#     docker compose up --build --abort-on-container-exit test
+#
+#   View logs:
+#     docker compose logs -f
+#
+#   Stop services:
+#     docker compose down
+#
+# SSL Support:
+#   RabbitMQ is configured with SSL/TLS on port 5671.
+#   Before first use, generate certificates:
+#     ./test/ssl/generate_certs.sh
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: pg_amqp_rabbitmq
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"     # AMQP
+      - "5671:5671"     # AMQP over SSL
+      - "15672:15672"   # Management UI
+    volumes:
+      - ./test/ssl/certs:/etc/rabbitmq/certs
+      - ./test/ssl/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_ERLANG_COOKIE: "pg_amqp_test_cookie"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # PostgreSQL for development (uses port 5433 to avoid conflicts)
+  postgres:
+    image: postgres:17
+    container_name: pg_amqp_postgres
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: test
+    volumes:
+      - pg_amqp_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Integration test runner
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      TEST_DB: postgres
+    profiles:
+      - test
+
+volumes:
+  pg_amqp_pgdata:

@@ -1,0 +1,49 @@
+-- Test: Extension creation and basic schema validation
+-- This test verifies that the pg_amqp extension can be created
+-- and sets up the expected schema and objects.
+-- Create the extension
+CREATE EXTENSION amqp;
+-- Verify extension exists
+SELECT extname, extversion FROM pg_extension WHERE extname = 'amqp';
+ extname | extversion 
+---------+------------
+ amqp    | 0.5.0
+(1 row)
+
+-- Verify schema exists
+SELECT nspname FROM pg_namespace WHERE nspname = 'amqp';
+ nspname 
+---------
+ amqp
+(1 row)
+
+-- Verify broker table exists with correct columns
+SELECT column_name, data_type, is_nullable, column_default
+FROM information_schema.columns
+WHERE table_schema = 'amqp' AND table_name = 'broker'
+ORDER BY ordinal_position;
+     column_name     | data_type | is_nullable |                 column_default                 
+---------------------+-----------+-------------+------------------------------------------------
+ broker_id           | integer   | NO          | nextval('amqp.broker_broker_id_seq'::regclass)
+ host                | text      | NO          | 
+ port                | integer   | NO          | 5672
+ vhost               | text      | YES         | 
+ username            | text      | YES         | 
+ password            | text      | YES         | 
+ ssl                 | boolean   | YES         | false
+ ssl_cacert          | text      | YES         | 
+ ssl_verify_peer     | boolean   | YES         | true
+ ssl_verify_hostname | boolean   | YES         | true
+(10 rows)
+
+-- Verify primary key constraint (filter out auto-generated NOT NULL constraints from PG16+)
+SELECT constraint_name, constraint_type
+FROM information_schema.table_constraints
+WHERE table_schema = 'amqp' AND table_name = 'broker'
+  AND constraint_name NOT LIKE '%_not_null'
+ORDER BY constraint_name;
+ constraint_name | constraint_type 
+-----------------+-----------------
+ broker_pkey     | PRIMARY KEY
+(1 row)
+

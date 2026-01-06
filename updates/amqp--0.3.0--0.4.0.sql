@@ -5,29 +5,29 @@
 
 CREATE TEMP TABLE amqp_preserve_privs_temp (statement text);
 
-INSERT INTO amqp_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.autonomous_publish(integer, varchar, varchar, varchar, integer, varchar, varchar, varchar) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+INSERT INTO amqp_preserve_privs_temp
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.autonomous_publish(integer, varchar, varchar, varchar, integer, varchar, varchar, varchar) TO '||array_to_string(array_agg(grantee::text), ',')||';'
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'autonomous_publish'; 
+AND routine_name = 'autonomous_publish';
 
-INSERT INTO amqp_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.disconnect(integer) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+INSERT INTO amqp_preserve_privs_temp
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.disconnect(integer) TO '||array_to_string(array_agg(grantee::text), ',')||';'
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'disconnect'; 
+AND routine_name = 'disconnect';
 
-INSERT INTO amqp_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.exchange_declare(integer, varchar, varchar, boolean, boolean, boolean) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+INSERT INTO amqp_preserve_privs_temp
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.exchange_declare(integer, varchar, varchar, boolean, boolean, boolean) TO '||array_to_string(array_agg(grantee::text), ',')||';'
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'exchange_declare'; 
+AND routine_name = 'exchange_declare';
 
-INSERT INTO amqp_preserve_privs_temp 
-SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.publish(integer, varchar, varchar, varchar, integer, varchar, varchar, varchar) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+INSERT INTO amqp_preserve_privs_temp
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.publish(integer, varchar, varchar, varchar, integer, varchar, varchar, varchar) TO '||array_to_string(array_agg(grantee::text), ',')||';'
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
-AND routine_name = 'publish'; 
+AND routine_name = 'publish';
 
 DROP FUNCTION @extschema@.autonomous_publish(integer, varchar, varchar, varchar);
 DROP FUNCTION @extschema@.disconnect(integer);
@@ -68,7 +68,7 @@ will disconnect any brokers that may be connected.';
 
 CREATE FUNCTION amqp.exchange_declare(
     broker_id integer
-    , exchange varchar 
+    , exchange varchar
     , exchange_type varchar
     , passive boolean
     , durable boolean
@@ -97,10 +97,10 @@ RETURNS boolean AS 'pg_amqp.so', 'pg_amqp_publish'
 LANGUAGE C IMMUTABLE;
 
 COMMENT ON FUNCTION @extschema@.publish(integer, varchar, varchar, varchar, integer, varchar, varchar, varchar) IS
-'Publishes a message (broker_id, exchange, routing_key, message). 
-The message will only be published if the containing PostgreSQL transaction successfully commits.  
-Under certain circumstances, the AMQP commit might fail.  In this case, a WARNING is emitted. 
-The last four parameters are optional and set the following message properties: 
+'Publishes a message (broker_id, exchange, routing_key, message).
+The message will only be published if the containing PostgreSQL transaction successfully commits.
+Under certain circumstances, the AMQP commit might fail.  In this case, a WARNING is emitted.
+The last four parameters are optional and set the following message properties:
 delivery_mode (either 1 or 2), content_type, reply_to and correlation_id.
 
 Publish returns a boolean indicating if the publish command was successful.  Note that as

@@ -1,0 +1,42 @@
+-- Test: Extension cleanup and recreation
+-- Verifies that the extension can be dropped and recreated cleanly
+-- Ensure extension exists
+SELECT extname FROM pg_extension WHERE extname = 'amqp';
+ extname
+---------
+ amqp
+(1 row)
+
+-- Drop the extension
+DROP EXTENSION amqp;
+-- Verify extension is gone
+SELECT extname FROM pg_extension WHERE extname = 'amqp';
+ extname
+---------
+(0 rows)
+
+-- Verify schema is gone
+SELECT nspname FROM pg_namespace WHERE nspname = 'amqp';
+ nspname
+---------
+ amqp
+(1 row)
+
+-- Recreate the extension
+CREATE EXTENSION amqp;
+-- Verify extension is back
+SELECT extname, extversion FROM pg_extension WHERE extname = 'amqp';
+ extname | extversion
+---------+------------
+ amqp    | 0.5.0
+(1 row)
+
+-- Verify schema is back
+SELECT nspname FROM pg_namespace WHERE nspname = 'amqp';
+ nspname
+---------
+ amqp
+(1 row)
+
+-- Final cleanup
+DROP EXTENSION amqp;

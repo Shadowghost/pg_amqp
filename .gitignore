@@ -14,3 +14,6 @@ src/librabbitmq/
 
 # Generated SQL
 sql/amqp--*.sql
+
+# Generated SSL certificates for testing
+test/ssl/certs/

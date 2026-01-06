@@ -1,0 +1,127 @@
+-- Test: Integration tests with RabbitMQ broker
+-- These tests require a running RabbitMQ instance at localhost:5672
+-- with default guest/guest credentials
+-- Create the extension first
+CREATE EXTENSION amqp;
+-- Set up broker configuration for tests
+INSERT INTO amqp.broker (host, port, vhost, username, password)
+VALUES ('localhost', 5672, '/', 'guest', 'guest');
+-- Test: Declare an exchange
+SELECT amqp.exchange_declare(1, 'pg_amqp_test_exchange', 'direct', false, false, true);
+ exchange_declare
+------------------
+ t
+(1 row)
+
+-- Test: Basic publish (transactional)
+BEGIN;
+SELECT amqp.publish(1, 'pg_amqp_test_exchange', 'test.key', 'Hello from pg_amqp transactional!');
+ publish
+---------
+ t
+(1 row)
+
+COMMIT;
+-- Test: Autonomous publish (immediate)
+SELECT amqp.autonomous_publish(1, 'pg_amqp_test_exchange', 'test.key', 'Hello from pg_amqp autonomous!');
+ autonomous_publish
+--------------------
+ t
+(1 row)
+
+-- Test: Publish with all optional parameters
+SELECT amqp.publish(
+    1,
+    'pg_amqp_test_exchange',
+    'test.key.full',
+    'Message with properties',
+    2,                    -- delivery_mode (persistent)
+    'application/json',   -- content_type
+    'reply.queue',        -- reply_to
+    'corr-123'           -- correlation_id
+);
+ publish
+---------
+ t
+(1 row)
+
+-- Test: Autonomous publish with all parameters
+SELECT amqp.autonomous_publish(
+    1,
+    'pg_amqp_test_exchange',
+    'test.key.full',
+    '{"test": "data"}',
+    2,
+    'application/json',
+    'reply.queue',
+    'corr-456'
+);
+ autonomous_publish
+--------------------
+ t
+(1 row)
+
+-- Test: Multiple publishes in a transaction
+BEGIN;
+SELECT amqp.publish(1, 'pg_amqp_test_exchange', 'batch.1', 'Batch message 1');
+ publish
+---------
+ t
+(1 row)
+
+SELECT amqp.publish(1, 'pg_amqp_test_exchange', 'batch.2', 'Batch message 2');
+ publish
+---------
+ t
+(1 row)
+
+SELECT amqp.publish(1, 'pg_amqp_test_exchange', 'batch.3', 'Batch message 3');
+ publish
+---------
+ t
+(1 row)
+
+COMMIT;
+-- Test: Rollback should not publish messages
+BEGIN;
+SELECT amqp.publish(1, 'pg_amqp_test_exchange', 'rollback.key', 'This should NOT be published');
+ publish
+---------
+ t
+(1 row)
+
+ROLLBACK;
+-- Test: Disconnect and reconnect
+SELECT amqp.disconnect(1);
+ disconnect
+------------
+
+(1 row)
+
+SELECT amqp.autonomous_publish(1, 'pg_amqp_test_exchange', 'reconnect.key', 'Message after reconnect');
+ autonomous_publish
+--------------------
+ t
+(1 row)
+
+-- Clean up
+SELECT amqp.disconnect(1);
+ disconnect
+------------
+
+(1 row)
+
+DELETE FROM amqp.broker;
+SELECT setval('amqp.broker_broker_id_seq', 1, false);
+ setval
+--------
+      1
+(1 row)
+
+-- Report success
+SELECT 'Integration tests completed successfully' as status;
+                  status
+------------------------------------------
+ Integration tests completed successfully
+(1 row)
+

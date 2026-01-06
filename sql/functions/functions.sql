@@ -32,7 +32,7 @@ will disconnect any brokers that may be connected.';
 
 CREATE FUNCTION amqp.exchange_declare(
     broker_id integer
-    , exchange varchar 
+    , exchange varchar
     , exchange_type varchar
     , passive boolean
     , durable boolean
@@ -61,10 +61,10 @@ RETURNS boolean AS 'pg_amqp.so', 'pg_amqp_publish'
 LANGUAGE C IMMUTABLE;
 
 COMMENT ON FUNCTION @extschema@.publish(integer, varchar, varchar, varchar, integer, varchar, varchar, varchar) IS
-'Publishes a message (broker_id, exchange, routing_key, message). 
-The message will only be published if the containing PostgreSQL transaction successfully commits.  
-Under certain circumstances, the AMQP commit might fail.  In this case, a WARNING is emitted. 
-The last four parameters are optional and set the following message properties: 
+'Publishes a message (broker_id, exchange, routing_key, message).
+The message will only be published if the containing PostgreSQL transaction successfully commits.
+Under certain circumstances, the AMQP commit might fail.  In this case, a WARNING is emitted.
+The last four parameters are optional and set the following message properties:
 delivery_mode (either 1 or 2), content_type, reply_to and correlation_id.
 
 Publish returns a boolean indicating if the publish command was successful.  Note that as

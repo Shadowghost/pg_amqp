@@ -1,0 +1,31 @@
+# Dockerfile for running pg_amqp integration tests
+FROM postgres:17
+
+# Install build dependencies and Python for verification script
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    postgresql-server-dev-17 \
+    libssl-dev \
+    pkg-config \
+    curl \
+    python3 \
+    netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /pg_amqp
+
+# Copy source files
+COPY . .
+
+# Build and install the extension
+RUN make clean && make && make install
+
+# Make test scripts executable
+RUN chmod +x test/docker_run_tests.sh test/integration_test.sh
+
+# Initialize PostgreSQL data directory
+RUN mkdir -p /var/lib/postgresql/data /var/log && \
+    chown -R postgres:postgres /var/lib/postgresql /var/log && \
+    su postgres -c "initdb -D /var/lib/postgresql/data"
+
+CMD ["/pg_amqp/test/docker_run_tests.sh"]

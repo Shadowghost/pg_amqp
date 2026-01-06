@@ -30,9 +30,76 @@ The build process automatically downloads librabbitmq 0.15.0 from GitHub during 
 
 A Dockerfile is provided for containerized builds:
 
+    # Build with default PostgreSQL 17
     docker build -t pg_amqp-builder .
     docker run --rm -v "$(pwd)":/build pg_amqp-builder make
-    docker run --rm -v "$(pwd)":/build pg_amqp-builder make install
+
+    # Build for a specific PostgreSQL version (14, 15, 16, 17)
+    docker build --build-arg PG_VERSION=16 -t pg_amqp-builder:pg16 .
+    docker run --rm -v "$(pwd)":/build pg_amqp-builder:pg16 make
+
+Testing
+-------
+
+### Test Categories
+
+- **Basic tests**: No external dependencies, test extension loading and configuration
+- **Integration tests**: Require RabbitMQ on port 5672
+- **SSL integration tests**: Require RabbitMQ with SSL on port 5671
+
+### Using the Test Runner
+
+The `test/run_tests.sh` script provides a convenient way to run tests:
+
+    # Run basic tests only (no RabbitMQ required)
+    ./test/run_tests.sh --basic
+
+    # Run all tests with automatic RabbitMQ management
+    ./test/run_tests.sh --start-rabbitmq --stop-rabbitmq --all
+
+    # Run SSL integration tests only
+    ./test/run_tests.sh --start-rabbitmq --ssl
+
+    # Run with specific PostgreSQL version
+    ./test/run_tests.sh --pg-config /usr/lib/postgresql/17/bin/pg_config --all
+
+### Using Docker Compose
+
+Docker Compose provides RabbitMQ with SSL support enabled:
+
+    # Generate SSL certificates (first time only)
+    ./test/ssl/generate_certs.sh
+
+    # Start RabbitMQ with SSL support
+    docker compose up -d rabbitmq
+
+    # Start RabbitMQ and PostgreSQL
+    docker compose up -d rabbitmq postgres
+
+    # Run containerized integration tests
+    docker compose up --build --abort-on-container-exit test
+
+    # Stop services
+    docker compose down
+
+**Ports:**
+- 5672: AMQP (non-SSL)
+- 5671: AMQP over SSL/TLS
+- 15672: RabbitMQ Management UI (guest/guest)
+
+### Running Tests with Make
+
+    # Basic tests (no RabbitMQ required)
+    make test
+
+    # Integration tests (requires RabbitMQ at localhost:5672)
+    make test-integration
+
+    # SSL integration tests (requires RabbitMQ with SSL at localhost:5671)
+    make test-ssl
+
+    # All tests
+    make test-all
 
 ### Troubleshooting
 
@@ -83,7 +150,7 @@ postgresql config
     shared_preload_libraries = 'pg_amqp.so'
 
 This extension requires PostgreSQL 9.1.0 or greater, so loading amqp is as simple
-as connecting to a database as a super user and running 
+as connecting to a database as a super user and running
 
     CREATE EXTENSION amqp;
 

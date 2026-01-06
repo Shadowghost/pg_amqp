@@ -1,0 +1,69 @@
+-- Test: Error handling without a broker
+-- These tests verify that the extension handles errors gracefully
+-- when no broker is available or configured incorrectly
+-- Set up a broker that doesn't exist (connection will fail)
+INSERT INTO amqp.broker (host, port, vhost, username, password)
+VALUES ('nonexistent.host.invalid', 5672, '/', 'guest', 'guest');
+-- Test publish to non-existent broker (should fail gracefully)
+-- The function returns false when it cannot connect
+SELECT amqp.publish(1, 'test_exchange', 'test.routing.key', 'test message');
+WARNING:  amqp[nonexistent.host.invalid:5672] socket/connect failed: hostname lookup failed
+ publish
+---------
+ f
+(1 row)
+
+-- Test autonomous_publish to non-existent broker
+SELECT amqp.autonomous_publish(1, 'test_exchange', 'test.routing.key', 'test message');
+WARNING:  amqp[nonexistent.host.invalid:5672] socket/connect failed: hostname lookup failed
+ autonomous_publish
+--------------------
+ f
+(1 row)
+
+-- Test exchange_declare to non-existent broker
+SELECT amqp.exchange_declare(1, 'test_exchange', 'direct', false, true, false);
+WARNING:  amqp[nonexistent.host.invalid:5672] socket/connect failed: hostname lookup failed
+ exchange_declare
+------------------
+ f
+(1 row)
+
+-- Test disconnect on non-connected broker (should not error)
+SELECT amqp.disconnect(1);
+ disconnect
+------------
+
+(1 row)
+
+-- Test with invalid broker_id (not in table)
+-- These should return false or handle gracefully
+SELECT amqp.publish(999, 'test_exchange', 'test.routing.key', 'test message');
+WARNING:  amqp can't find broker 999
+ publish
+---------
+ f
+(1 row)
+
+SELECT amqp.autonomous_publish(999, 'test_exchange', 'test.routing.key', 'test message');
+WARNING:  amqp can't find broker 999
+ autonomous_publish
+--------------------
+ f
+(1 row)
+
+SELECT amqp.exchange_declare(999, 'test_exchange', 'direct', false, true, false);
+WARNING:  amqp can't find broker 999
+ exchange_declare
+------------------
+ f
+(1 row)
+
+-- Clean up
+DELETE FROM amqp.broker;
+SELECT setval('amqp.broker_broker_id_seq', 1, false);
+ setval
+--------
+      1
+(1 row)
+

@@ -1,0 +1,253 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  # Build and basic tests across PostgreSQL versions
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pg_version: [14, 15, 16, 17]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install PostgreSQL ${{ matrix.pg_version }}
+      run: |
+        sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+        sudo apt-get update
+        sudo apt-get install -y postgresql-${{ matrix.pg_version }} postgresql-server-dev-${{ matrix.pg_version }}
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get install -y build-essential libssl-dev pkg-config curl
+
+    - name: Build extension
+      run: |
+        make PG_CONFIG=/usr/lib/postgresql/${{ matrix.pg_version }}/bin/pg_config
+
+    - name: Install extension
+      run: |
+        sudo make install PG_CONFIG=/usr/lib/postgresql/${{ matrix.pg_version }}/bin/pg_config
+
+    - name: Start PostgreSQL
+      run: |
+        sudo pg_ctlcluster ${{ matrix.pg_version }} main stop 2>/dev/null || true
+        sudo pg_dropcluster ${{ matrix.pg_version }} main --stop 2>/dev/null || true
+        sudo pg_createcluster ${{ matrix.pg_version }} main --port 5432 --start
+        for i in {1..30}; do
+          pg_isready -p 5432 2>/dev/null && break
+          sleep 1
+        done
+        sudo -u postgres createuser -p 5432 -s $(whoami)
+        sudo -u postgres createdb -p 5432 -O $(whoami) $(whoami)
+
+    - name: Run basic tests
+      run: |
+        make installcheck PG_CONFIG=/usr/lib/postgresql/${{ matrix.pg_version }}/bin/pg_config
+
+    - name: Upload test results on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-pg${{ matrix.pg_version }}
+        path: |
+          test/regression.diffs
+          test/regression.out
+          test/results/
+        if-no-files-found: ignore
+
+    - name: Show test output on failure
+      if: failure()
+      run: |
+        echo "=== Test Differences ==="
+        cat test/regression.diffs 2>/dev/null || echo "No regression.diffs"
+        echo "=== PostgreSQL Logs ==="
+        sudo cat /var/log/postgresql/postgresql-${{ matrix.pg_version }}-main.log 2>/dev/null | tail -50 || true
+
+  # Integration tests with RabbitMQ using Docker Compose
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Generate SSL certificates
+      run: |
+        chmod +x ./test/ssl/generate_certs.sh
+        ./test/ssl/generate_certs.sh
+
+    - name: Run integration tests
+      run: |
+        docker compose up --build --abort-on-container-exit test
+
+    - name: Show logs on failure
+      if: failure()
+      run: |
+        docker compose logs
+
+  # SSL integration tests with RabbitMQ
+  ssl-integration-tests:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install PostgreSQL 17
+      run: |
+        sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+        sudo apt-get update
+        sudo apt-get install -y postgresql-17 postgresql-server-dev-17
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get install -y build-essential libssl-dev pkg-config curl
+
+    - name: Build and install extension
+      run: |
+        make PG_CONFIG=/usr/lib/postgresql/17/bin/pg_config
+        sudo make install PG_CONFIG=/usr/lib/postgresql/17/bin/pg_config
+
+    - name: Start PostgreSQL
+      run: |
+        sudo pg_ctlcluster 17 main stop 2>/dev/null || true
+        sudo pg_dropcluster 17 main --stop 2>/dev/null || true
+        sudo pg_createcluster 17 main --port 5432 --start
+        for i in {1..30}; do
+          pg_isready -p 5432 2>/dev/null && break
+          sleep 1
+        done
+        sudo -u postgres createuser -p 5432 -s $(whoami)
+        sudo -u postgres createdb -p 5432 -O $(whoami) $(whoami)
+
+    - name: Generate SSL certificates
+      run: |
+        chmod +x ./test/ssl/generate_certs.sh
+        ./test/ssl/generate_certs.sh
+
+    - name: Start RabbitMQ with SSL
+      run: |
+        docker compose up -d --wait rabbitmq
+        echo "RabbitMQ healthcheck passed, waiting for SSL listener..."
+        for i in {1..30}; do
+          if echo | openssl s_client -connect localhost:5671 2>&1 | grep -q "CONNECTED"; then
+            echo "SSL connection successful"
+            break
+          fi
+          if [ $i -eq 30 ]; then
+            echo "SSL connection test failed"
+            docker compose logs rabbitmq
+            exit 1
+          fi
+          sleep 1
+        done
+        # Extra wait to ensure RabbitMQ is fully stable
+        sleep 3
+        docker compose logs rabbitmq | tail -30
+
+    - name: Run SSL integration tests
+      run: |
+        make test-ssl PG_CONFIG=/usr/lib/postgresql/17/bin/pg_config
+
+    - name: Upload test results on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ssl-test-results
+        path: |
+          test/regression.diffs
+          test/regression.out
+          test/results/
+        if-no-files-found: ignore
+
+    - name: Show logs on failure
+      if: failure()
+      run: |
+        echo "=== Test Differences ==="
+        cat test/regression.diffs 2>/dev/null || echo "No regression.diffs"
+        echo "=== RabbitMQ Logs ==="
+        docker compose logs rabbitmq
+        echo "=== PostgreSQL Logs ==="
+        sudo cat /var/log/postgresql/postgresql-17-main.log 2>/dev/null | tail -50 || true
+
+    - name: Stop RabbitMQ
+      if: always()
+      run: |
+        docker compose down
+
+  # Windows build verification
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pg_version: [16, 17]
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-openssl
+          mingw-w64-x86_64-pkg-config
+          make
+          curl
+          tar
+          sed
+
+    - name: Install PostgreSQL ${{ matrix.pg_version }}
+      shell: pwsh
+      run: |
+        choco install postgresql${{ matrix.pg_version }} --params '/Password:postgres' -y
+        echo "PGROOT=C:\Program Files\PostgreSQL\${{ matrix.pg_version }}" >> $env:GITHUB_ENV
+
+    - name: Build extension
+      run: |
+        export PATH="/c/Program Files/PostgreSQL/${{ matrix.pg_version }}/bin:$PATH"
+        export PG_CONFIG="/c/Program Files/PostgreSQL/${{ matrix.pg_version }}/bin/pg_config"
+        "$PG_CONFIG" --version
+        make PG_CONFIG="$PG_CONFIG"
+
+    - name: Verify build
+      run: |
+        ls -la *.dll 2>/dev/null || ls -la *.so 2>/dev/null || ls -la src/
+
+  # Docker build verification
+  build-docker:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build Docker image
+      run: |
+        docker build -t pg_amqp-builder .
+
+    - name: Build extension in Docker
+      run: |
+        docker run --rm -v "$(pwd)":/build pg_amqp-builder make clean
+        docker run --rm -v "$(pwd)":/build pg_amqp-builder make
+
+    - name: Verify build artifacts
+      run: |
+        ls -la pg_amqp.so
+        file pg_amqp.so
