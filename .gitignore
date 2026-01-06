@@ -4,3 +4,13 @@ ignore/*
 .deps/*
 *.o
 *.so
+*.bc
+
+# Downloaded librabbitmq files (populated during build)
+src/librabbitmq/
+
+# Keep the .gitkeep
+!src/librabbitmq/.gitkeep
+
+# Generated SQL
+sql/amqp--*.sql

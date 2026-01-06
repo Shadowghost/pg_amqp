@@ -10,10 +10,31 @@ All bug reports, feature requests and general questions can be directed to the I
 Building
 --------
 
+### Prerequisites
+
+- PostgreSQL 9.1+ development headers (`postgresql-server-dev-XX` or similar)
+- OpenSSL development libraries (`libssl-dev` or `openssl-devel`)
+- curl (for downloading librabbitmq during build)
+- pkg-config
+
+### Standard Build
+
 To build pg_amqp, just do this:
 
     make
     make install
+
+The build process automatically downloads librabbitmq 0.15.0 from GitHub during the first build.
+
+### Docker Build
+
+A Dockerfile is provided for containerized builds:
+
+    docker build -t pg_amqp-builder .
+    docker run --rm -v "$(pwd)":/build pg_amqp-builder make
+    docker run --rm -v "$(pwd)":/build pg_amqp-builder make install
+
+### Troubleshooting
 
 If you encounter an error such as:
 
@@ -94,4 +115,25 @@ If there is a need to disconnect from a specific broker, one can call:
 
 which will disconnect from the broker if it is connected and do nothing
 if it is already disconnected.
+
+SSL/TLS Connections
+-------------------
+
+To connect to an AMQP broker using SSL/TLS, configure the broker entry with
+the SSL options:
+
+    INSERT INTO amqp.broker (host, port, vhost, username, password, ssl, ssl_verify_peer, ssl_verify_hostname)
+    VALUES ('rabbitmq.example.com', 5671, '/', 'user', 'pass', true, true, true);
+
+The SSL-related columns are:
+
+- `ssl` (boolean): Enable SSL/TLS connection (default: false)
+- `ssl_cacert` (text): Path to CA certificate file for server verification
+- `ssl_verify_peer` (boolean): Verify the server's certificate (default: true)
+- `ssl_verify_hostname` (boolean): Verify the server's hostname matches the certificate (default: true)
+
+For self-signed certificates or internal CAs, specify the CA certificate path:
+
+    INSERT INTO amqp.broker (host, port, vhost, username, password, ssl, ssl_cacert)
+    VALUES ('rabbitmq.example.com', 5671, '/', 'user', 'pass', true, '/etc/ssl/certs/ca-certificates.crt');
 
