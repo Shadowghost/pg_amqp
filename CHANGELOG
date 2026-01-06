@@ -1,5 +1,14 @@
+0.5.0
+-- Upgraded bundled librabbitmq from 0.0.1 to 0.15.0
+-- Added SSL/TLS support for secure AMQP connections. New broker table columns: ssl, ssl_cacert, ssl_verify_peer, ssl_verify_hostname
+-- librabbitmq sources are now downloaded during build rather than bundled in the repository
+-- Added Dockerfile for containerized builds
+-- Updated socket handling to use new librabbitmq socket API
+-- Requires OpenSSL development libraries for building
+
 0.4.2
 --  Sets the maximum channels for a connection to that of the server which has been changed from 0 to 2047 in recent version of rabbitmq
+
 0.4.1
 -- Clarify commit warning messages with error codes. Also corrected the warning message for rollbacks (Github Pull Request #15).
 
